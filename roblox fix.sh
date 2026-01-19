@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CURRENT_VERSION="1"
+CURRENT_VERSION="1.1"
 # Añade aquí tus cambios para la próxima versión
 CURRENT_CHANGELOG="Se añadió sistema de preguntas para actualizar y soporte para changelogs."
 
