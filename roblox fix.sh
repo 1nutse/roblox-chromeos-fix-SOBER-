@@ -1,135 +1,171 @@
 #!/bin/bash
 
-# Updated version variable for the installer itself
-CURRENT_VERSION="2"
+# --- CONFIGURACIÓN DE VERSIÓN LOCAL (INSTALADOR) ---
+CURRENT_VERSION="2.1"
 
-# 1. Ensure Weston, xdotool AND python3-tk are installed
-# Added python3-tk to create the UI without Zenity
+# 1. Verificar e Instalar dependencias (Weston, Xdotool, Python3-Tk)
+echo "Verifying dependencies..."
 if ! command -v weston >/dev/null || ! command -v xdotool >/dev/null || ! dpkg -s python3-tk >/dev/null 2>&1; then
-    echo "Installing necessary dependencies (Weston, Xdotool, Python3-Tk)..."
+    echo "Installing required packages (Weston, Xdotool, Python3-Tk)..."
     sudo apt-get update && sudo apt-get install -y weston xdotool python3-tk
 fi
 
-# 2. Grant Flatpak permissions for windowing system
+# 2. Permisos de Flatpak
 flatpak override --user --socket=wayland --socket=x11 org.vinegarhq.Sober
 
-# 3. Create required directories
+# 3. Crear directorios
 mkdir -p ~/.local/bin ~/.local/share/applications
 
-# 4. Create the optimized launch script with Python GUI
+# 4. CREAR EL SCRIPT DE LANZAMIENTO OPTIMIZADO
+# Usamos 'EOF' entre comillas para evitar que se expandan las variables aquí.
+# Las variables se expandirán cuando el usuario EJECUTE el script resultante.
 cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
 #!/bin/bash
 
 # --- CHANGELOG START ---
-# Version 2.0:
-# - Added interactive Update GUI (No Zenity).
-# - You can now view changelogs before updating.
-# - Added "View Script" button.
-# - Fixed rendering flags for better performance.
+# Version 2.1:
+# - Fixed bug where update popup would not appear.
+# - Added anti-cache mechanism for GitHub updates.
+# - Improved Python script generation logic.
 # --- CHANGELOG END ---
 
-CURRENT_VERSION="2.0"
+# VERSION ACTUAL DE ESTE SCRIPT
+MY_VERSION="2.1"
+
+# CONFIGURACION
 VERSION_FILE="$HOME/.local/share/sober-fix-version"
-UPDATE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh"
+# Añadimos un timestamp para evitar cache de Github
+UPDATE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh?t=$(date +%s)"
+RAW_URL_NO_PARAM="https://github.com/1nutse/roblox-chromeos-fix-SOBER-/blob/main/roblox%20fix.sh"
 TEMP_INSTALLER="/tmp/roblox-fix-update.sh"
+PYTHON_UI_SCRIPT="/tmp/sober_update_ui.py"
 
-# --- PYTHON GUI UPDATE CHECKER ---
-check_updates_gui() {
-    # Download remote script silently
+# --- UPDATE CHECKER FUNCTION ---
+check_for_updates() {
+    echo "Checking for updates..."
+    
+    # Descargar el script remoto (con timeout de 5s)
     if curl -sS --max-time 5 "$UPDATE_URL" -o "$TEMP_INSTALLER"; then
-        REMOTE_VER=$(grep '^CURRENT_VERSION=' "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
-        LOCAL_VER="$CURRENT_VERSION"
+        
+        # 1. Extraer versión remota (Buscamos la linea exacta CURRENT_VERSION="X")
+        # Usamos grep flexible para encontrar la variable donde sea que esté en el archivo
+        REMOTE_VER=$(grep -o 'CURRENT_VERSION="[^"]*"' "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
+        
+        # Si falló el grep anterior, intentamos búsqueda simple
+        if [ -z "$REMOTE_VER" ]; then
+             REMOTE_VER=$(grep "CURRENT_VERSION=" "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
+        fi
 
-        # Only show GUI if versions differ and remote is not empty
-        if [ "$REMOTE_VER" != "$LOCAL_VER" ] && [ -n "$REMOTE_VER" ]; then
+        echo "Local Version: $MY_VERSION"
+        echo "Remote Version: $REMOTE_VER"
+
+        # 2. Comparar versiones
+        if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$MY_VERSION" ]; then
+            echo "Update found! Preparing GUI..."
             
-            # Extract Changelog from downloaded file
+            # 3. Extraer Changelog (sed extrae texto entre los marcadores)
             CHANGELOG=$(sed -n '/# --- CHANGELOG START ---/,/# --- CHANGELOG END ---/p' "$TEMP_INSTALLER" | sed 's/# //g' | sed 's/--- CHANGELOG START ---//g' | sed 's/--- CHANGELOG END ---//g')
             
-            # Export variables for Python
-            export REMOTE_VER LOCAL_VER CHANGELOG UPDATE_URL
-            
-            # Run Python GUI
-            python3 -c '
+            # Si el changelog está vacío, poner mensaje por defecto
+            if [ -z "$CHANGELOG" ]; then CHANGELOG="No changelog details available."; fi
+
+            # 4. Crear script de Python temporal (evita problemas de comillas en bash)
+            cat > "$PYTHON_UI_SCRIPT" <<PYEOF
 import tkinter as tk
 from tkinter import messagebox, scrolledtext
 import webbrowser
 import sys
-import os
 
-def do_update():
-    sys.exit(10) # Exit code 10 means UPDATE
+# Datos inyectados
+local_ver = "$MY_VERSION"
+remote_ver = "$REMOTE_VER"
+changelog_text = """$CHANGELOG"""
+script_url = "$RAW_URL_NO_PARAM"
 
-def do_skip():
-    sys.exit(0) # Exit code 0 means CONTINUE
+def on_update():
+    root.destroy()
+    sys.exit(10) # Código 10 = ACTUALIZAR
 
-def open_url():
-    webbrowser.open(os.environ["UPDATE_URL"])
+def on_skip():
+    root.destroy()
+    sys.exit(0) # Código 0 = JUGAR SIN ACTUALIZAR
 
-# Window Setup
+def on_view_code():
+    webbrowser.open(script_url)
+
+# Configuración Ventana
 root = tk.Tk()
 root.title("Sober Fix - Update Available")
-root.geometry("500x400")
+root.geometry("520x450")
+root.resizable(False, False)
 
-# Center content
-frame = tk.Frame(root, padx=20, pady=20)
-frame.pack(expand=True, fill="both")
+# Main Frame
+main_frame = tk.Frame(root, padx=20, pady=20)
+main_frame.pack(expand=True, fill="both")
 
-# Header
-lbl_header = tk.Label(frame, text=f"Update Available!", font=("Arial", 16, "bold"))
-lbl_header.pack(pady=(0, 10))
+# Título
+tk.Label(main_frame, text="Update Available!", font=("Helvetica", 16, "bold"), fg="#d32f2f").pack(pady=(0, 10))
 
-# Version Info
-v_frame = tk.Frame(frame)
-v_frame.pack(fill="x", pady=5)
-tk.Label(v_frame, text=f"Current Version: {os.environ.get("LOCAL_VER")}", fg="gray").pack(side="left")
-tk.Label(v_frame, text=f"New Version: {os.environ.get("REMOTE_VER")}", fg="green", font=("Arial", 10, "bold")).pack(side="right")
+# Info Versiones
+info_frame = tk.Frame(main_frame, relief="groove", borderwidth=2, padx=10, pady=5)
+info_frame.pack(fill="x", pady=5)
+tk.Label(info_frame, text=f"Your Version: {local_ver}", font=("Helvetica", 10)).pack(side="left")
+tk.Label(info_frame, text=f"New Version: {remote_ver}", font=("Helvetica", 10, "bold"), fg="green").pack(side="right")
 
-# Changelog Area
-tk.Label(frame, text="Changelog:", font=("Arial", 10, "bold"), anchor="w").pack(fill="x", pady=(10, 0))
-txt = scrolledtext.ScrolledText(frame, height=10, font=("Consolas", 9))
-txt.insert(tk.INSERT, os.environ.get("CHANGELOG", "No changelog available."))
-txt.configure(state="disabled") # Read only
-txt.pack(fill="both", expand=True, pady=5)
+# Changelog
+tk.Label(main_frame, text="What's New:", font=("Helvetica", 10, "bold"), anchor="w").pack(fill="x", pady=(15, 5))
 
-# Buttons
-btn_frame = tk.Frame(frame)
-btn_frame.pack(fill="x", pady=10)
+txt_area = scrolledtext.ScrolledText(main_frame, height=10, font=("Consolas", 9), bg="#f5f5f5")
+txt_area.insert(tk.END, changelog_text)
+txt_area.configure(state="disabled") # Solo lectura
+txt_area.pack(fill="both", expand=True)
 
-btn_view = tk.Button(btn_frame, text="View Script (Web)", command=open_url)
-btn_view.pack(side="left")
+# Botones
+btn_frame = tk.Frame(main_frame, pady=20)
+btn_frame.pack(fill="x")
 
-btn_skip = tk.Button(btn_frame, text="Play Without Updating", command=do_skip)
-btn_skip.pack(side="right", padx=5)
+# Boton Ver Codigo (Izquierda)
+tk.Button(btn_frame, text="View Code", command=on_view_code).pack(side="left")
 
-btn_update = tk.Button(btn_frame, text="UPDATE NOW", bg="#007bff", fg="white", command=do_update)
-btn_update.pack(side="right")
+# Botones Acción (Derecha)
+tk.Button(btn_frame, text="UPDATE NOW", bg="#007bff", fg="white", font=("Helvetica", 10, "bold"), padx=10, command=on_update).pack(side="right", marginLeft=10)
+tk.Button(btn_frame, text="Play without updating", command=on_skip).pack(side="right", padx=10)
 
-# Prevent closing without choice (optional, or treat close as skip)
-root.protocol("WM_DELETE_WINDOW", do_skip)
+# Manejar cierre de ventana (X) como Skip
+root.protocol("WM_DELETE_WINDOW", on_skip)
 
 root.mainloop()
-'
-            # Capture Python exit code
+PYEOF
+
+            # 5. Ejecutar Python
+            python3 "$PYTHON_UI_SCRIPT"
             EXIT_CODE=$?
             
+            # Limpiar script python
+            rm -f "$PYTHON_UI_SCRIPT"
+
+            # 6. Acción según el usuario
             if [ $EXIT_CODE -eq 10 ]; then
-                echo "User chose to update."
+                echo "Starting update process..."
                 chmod +x "$TEMP_INSTALLER"
                 bash "$TEMP_INSTALLER"
-                exit 0 # Stop this script, the new one will run or has run
+                exit 0 # Salir de este script, el nuevo script tomará el control
+            else
+                echo "Update skipped by user."
             fi
-            # If exit code is 0, we continue to launch
         fi
+    else
+        echo "Could not check for updates (No internet or GitHub down). Proceeding..."
     fi
+    # Limpiar instalador temp si no se usó
     rm -f "$TEMP_INSTALLER"
 }
 
-# Run the update checker BEFORE starting anything else
-check_updates_gui
+# EJECUTAR CHEQUEO DE UPDATE ANTES DE NADA
+check_for_updates
 
 # =========================================================================
-#                   EXISTING LAUNCH LOGIC BELOW
+#                   AQUÍ COMIENZA EL LANZAMIENTO DEL JUEGO
 # =========================================================================
 
 # --- CLEANUP PREVIOUS INSTANCES ---
@@ -242,11 +278,8 @@ chmod +x ~/.local/share/applications/sober-fix.desktop
 echo "$CURRENT_VERSION" > ~/.local/share/sober-fix-version
 
 echo "=========================================="
-echo "SYSTEM UPDATED (Version $CURRENT_VERSION)"
+echo "INSTALACIÓN COMPLETADA (Versión $CURRENT_VERSION)"
 echo "=========================================="
-echo "New features:"
-echo "- Update Popup (GUI) added using Python/Tkinter."
-echo "- Changelog viewer integrated."
-echo "- Auto-launch disabled if update is pending user action."
-echo ""
-echo "Launch 'Roblox (Sober Fix)' to test."
+echo "Se ha arreglado la detección de actualizaciones."
+echo "Ahora, si subes la version en GitHub, el popup aparecerá correctamente."
+echo "Puedes iniciar el juego desde el menú de aplicaciones."
