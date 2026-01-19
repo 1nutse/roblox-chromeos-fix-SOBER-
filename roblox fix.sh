@@ -4,7 +4,7 @@
 # CONFIGURATION & CHANGELOG
 # ==============================================================================
 # Esta variable define la versión.
-CURRENT_VERSION="2.1"
+CURRENT_VERSION="2.15"
 
 # NOTA PARA EL DESARROLLADOR: Mantén este formato exacto (comillas en líneas separadas o pegadas)
 # para que el extractor funcione correctamente.
