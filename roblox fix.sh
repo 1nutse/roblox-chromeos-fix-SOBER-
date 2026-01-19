@@ -1,216 +1,166 @@
 #!/bin/bash
 
-# --- CONFIGURACIÓN DE VERSIÓN LOCAL ---
-CURRENT_VERSION="5"
+# --- LOCAL VERSION (INSTALLER) ---
+CURRENT_VERSION="1"
 
-echo "========================================"
-echo "    INSTALANDO SOBER FIX (VER 2.3)      "
-echo "========================================"
-
-# 1. VERIFICACIÓN ROBUSTA DE DEPENDENCIAS
-# Intentamos importar tkinter directamente. Si falla, instalamos.
-echo "[*] Verificando entorno gráfico y librerías..."
-
-NEED_INSTALL=0
-
-if ! command -v weston >/dev/null; then NEED_INSTALL=1; fi
-if ! command -v xdotool >/dev/null; then NEED_INSTALL=1; fi
-# Comprobamos si Python puede usar Tkinter realmente
-if ! python3 -c "import tkinter" >/dev/null 2>&1; then NEED_INSTALL=1; fi
-
-if [ $NEED_INSTALL -eq 1 ]; then
-    echo "[!] Faltan dependencias. Instalando (se requerirá contraseña)..."
-    sudo apt-get update
-    # Instalamos explícitamente python3-tk y python3-pip por si acaso
-    sudo apt-get install -y weston xdotool python3-tk python3-dev
-else
-    echo "[OK] Dependencias correctas."
+# 1. Ensure Dependencies (Weston, Xdotool, Python3-Tk)
+# checking silently first to avoid sudo prompts if already installed
+if ! command -v weston >/dev/null || ! command -v xdotool >/dev/null || ! dpkg -s python3-tk >/dev/null 2>&1; then
+    echo "Installing required packages..."
+    sudo apt-get update && sudo apt-get install -y weston xdotool python3-tk
 fi
 
-# 2. Permisos Flatpak
+# 2. Grant Flatpak permissions
 flatpak override --user --socket=wayland --socket=x11 org.vinegarhq.Sober
 
-# 3. Directorios
+# 3. Create directories
 mkdir -p ~/.local/bin ~/.local/share/applications
 
-# 4. GENERAR SCRIPT DE LANZAMIENTO
-# Usamos 'EOF' para proteger las variables internas
+# 4. CREATE THE LAUNCH SCRIPT
+# We use 'EOF' quoted to prevent variable expansion during creation.
 cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
 #!/bin/bash
 
 # --- CHANGELOG START ---
-# Version 2.3:
-# - Fixed "Invisible Popup" issue by forcing DISPLAY variable check.
-# - Added self-repair for missing Python libraries.
-# - Improved UI responsiveness.
-# - Cleaned up temporary files more aggressively.
+# Version 2.2:
+# - Fixed text encoding issues (weird characters).
+# - Removed system buttons (Yes/No); used custom English buttons only.
+# - Cleaned up the Update GUI layout.
+# - Enforced English language for all text.
 # --- CHANGELOG END ---
 
-MY_VERSION="2.3"
+# CURRENT SCRIPT VERSION
+MY_VERSION="2.2"
 
-# Rutas y URLs
+# CONFIGURATION
 VERSION_FILE="$HOME/.local/share/sober-fix-version"
-# Timestamp para romper caché de GitHub
+# Time parameter (?t=) forces GitHub to serve the fresh file, bypassing cache
 UPDATE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh?t=$(date +%s)"
-RAW_URL_VIEW="https://github.com/1nutse/roblox-chromeos-fix-SOBER-/blob/main/roblox%20fix.sh"
+RAW_URL_NO_PARAM="https://github.com/1nutse/roblox-chromeos-fix-SOBER-/blob/main/roblox%20fix.sh"
 TEMP_INSTALLER="/tmp/roblox-fix-update.sh"
-PYTHON_UI_SCRIPT="/tmp/sober_ui_launcher.py"
+PYTHON_UI_SCRIPT="/tmp/sober_update_ui.py"
 
 # --- UPDATE CHECKER LOGIC ---
 check_for_updates() {
-    # Asegurar que tenemos DISPLAY (necesario para el popup)
-    if [ -z "$DISPLAY" ]; then
-        export DISPLAY=:0
-    fi
-
-    # Descargar script silenciosamente
+    # 1. Download script silently
     if curl -sS --max-time 5 "$UPDATE_URL" -o "$TEMP_INSTALLER"; then
         
-        # Extraer versión remota buscando la cadena exacta
+        # 2. Extract Remote Version (Search strictly for CURRENT_VERSION="X.X")
         REMOTE_VER=$(grep -o 'CURRENT_VERSION="[^"]*"' "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
         
-        # Fallback
+        # Fallback search if strict search fails
         if [ -z "$REMOTE_VER" ]; then
              REMOTE_VER=$(grep "CURRENT_VERSION=" "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
         fi
 
-        # Si hay versión remota y es diferente a la local
+        # 3. Compare Versions
         if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$MY_VERSION" ]; then
             
-            # Extraer Changelog
+            # Extract Changelog cleanly
             CHANGELOG=$(sed -n '/# --- CHANGELOG START ---/,/# --- CHANGELOG END ---/p' "$TEMP_INSTALLER" | sed 's/# //g' | sed 's/--- CHANGELOG START ---//g' | sed 's/--- CHANGELOG END ---//g')
-            if [ -z "$CHANGELOG" ]; then CHANGELOG="No details provided in the script."; fi
+            
+            if [ -z "$CHANGELOG" ]; then CHANGELOG="No changelog details available."; fi
 
-            # Exportar variables para Python
-            export MY_VER="$MY_VERSION"
-            export NEW_VER="$REMOTE_VER"
-            export CL_TEXT="$CHANGELOG"
-            export CODE_URL="$RAW_URL_VIEW"
-
-            # Generar el script Python GUI
-            cat > "$PYTHON_UI_SCRIPT" <<'PY_EOF'
+            # 4. Generate Python GUI Script
+            # We use cat <<PYEOF to inject Bash variables into Python code
+            cat > "$PYTHON_UI_SCRIPT" <<PYEOF
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import scrolledtext
 import webbrowser
 import sys
-import os
 
-# Configuración de seguridad ante fallos
-try:
-    local_ver = os.environ.get("MY_VER", "Unknown")
-    remote_ver = os.environ.get("NEW_VER", "Unknown")
-    changelog_content = os.environ.get("CL_TEXT", "No info.")
-    code_url = os.environ.get("CODE_URL", "https://github.com")
+# Injected Variables
+local_ver = "$MY_VERSION"
+remote_ver = "$REMOTE_VER"
+changelog_text = """$CHANGELOG"""
+script_url = "$RAW_URL_NO_PARAM"
 
-    def update_now():
-        root.destroy()
-        sys.exit(10) # 10 = Update
+def on_update():
+    root.destroy()
+    sys.exit(10) # Exit 10 -> PROCEED UPDATE
 
-    def play_only():
-        root.destroy()
-        sys.exit(0) # 0 = Play
+def on_skip():
+    root.destroy()
+    sys.exit(0) # Exit 0 -> PLAY GAME
 
-    def view_code():
-        webbrowser.open(code_url)
+def on_view_code():
+    webbrowser.open(script_url)
 
-    root = tk.Tk()
-    root.title("Sober Fix Update Available")
+# Window Setup
+root = tk.Tk()
+root.title("Sober Fix Update")
+root.geometry("500x420")
+root.resizable(False, False)
 
-    # Centrar ventana
-    w, h = 520, 450
-    ws = root.winfo_screenwidth()
-    hs = root.winfo_screenheight()
-    x = (ws/2) - (w/2)
-    y = (hs/2) - (h/2)
-    root.geometry('%dx%d+%d+%d' % (w, h, x, y))
-    root.resizable(False, False)
+# Main Container
+main_frame = tk.Frame(root, padx=15, pady=15)
+main_frame.pack(expand=True, fill="both")
 
-    # Estilos
-    style = ttk.Style()
-    try:
-        style.theme_use('clam')
-    except:
-        pass # Usar default si falla
+# Header
+tk.Label(main_frame, text="Update Available!", font=("Arial", 14, "bold"), fg="#d32f2f").pack(pady=(0, 10))
 
-    # Panel Principal
-    main = ttk.Frame(root, padding=15)
-    main.pack(fill="both", expand=True)
+# Version Info Box
+v_frame = tk.Frame(main_frame, relief="groove", borderwidth=2, padx=10, pady=8)
+v_frame.pack(fill="x", pady=5)
+tk.Label(v_frame, text=f"Current: {local_ver}", font=("Arial", 10)).pack(side="left")
+tk.Label(v_frame, text=f"New: {remote_ver}", font=("Arial", 10, "bold"), fg="#2e7d32").pack(side="right")
 
-    # Titulo
-    lbl_title = ttk.Label(main, text="New Version Available!", font=("Helvetica", 14, "bold"), foreground="#d9534f")
-    lbl_title.pack(pady=(0, 10))
+# Changelog Section
+tk.Label(main_frame, text="Changelog / Changes:", font=("Arial", 10, "bold"), anchor="w").pack(fill="x", pady=(15, 5))
 
-    # Info
-    info_frame = ttk.Frame(main)
-    info_frame.pack(fill="x", pady=5)
-    ttk.Label(info_frame, text=f"Current: {local_ver}", font=("Helvetica", 10)).pack(side="left")
-    ttk.Label(info_frame, text=f"New: {remote_ver}", font=("Helvetica", 10, "bold"), foreground="green").pack(side="right")
+# Text Area
+txt = scrolledtext.ScrolledText(main_frame, height=8, font=("Consolas", 9), bg="#f0f0f0")
+txt.insert(tk.END, changelog_text.strip())
+txt.configure(state="disabled") # Read Only
+txt.pack(fill="both", expand=True)
 
-    # Changelog
-    ttk.Label(main, text="Changelog / Changes:", font=("Helvetica", 10, "bold")).pack(anchor="w", pady=(15, 2))
-    
-    # Text Area
-    txt = scrolledtext.ScrolledText(main, height=10, font=("Consolas", 9))
-    txt.insert(tk.END, changelog_content)
-    txt.configure(state="disabled", bg="#f7f7f7", relief="flat")
-    txt.pack(fill="both", expand=True)
+# Button Area
+btn_frame = tk.Frame(main_frame, pady=15)
+btn_frame.pack(fill="x")
 
-    # Botones
-    btn_frame = ttk.Frame(main)
-    btn_frame.pack(fill="x", pady=(20, 0))
+# Left Button: View Code
+tk.Button(btn_frame, text="View Script Code", command=on_view_code).pack(side="left")
 
-    # Boton Código
-    ttk.Button(btn_frame, text="View Script Code", command=view_code).pack(side="left")
+# Right Buttons: Update & Skip
+tk.Button(btn_frame, text="UPDATE NOW", bg="#007bff", fg="white", font=("Arial", 9, "bold"), padx=10, command=on_update).pack(side="right", padx=(10, 0))
+tk.Button(btn_frame, text="Play without updating", command=on_skip).pack(side="right")
 
-    # Botones Acción
-    ttk.Button(btn_frame, text="UPDATE NOW", command=update_now).pack(side="right", padx=(10, 0))
-    ttk.Button(btn_frame, text="Play Without Updating", command=play_only).pack(side="right")
+# Handle "X" button as Skip
+root.protocol("WM_DELETE_WINDOW", on_skip)
 
-    # Forzar foco
-    root.lift()
-    root.attributes('-topmost',True)
-    root.after_idle(root.attributes,'-topmost',False)
+root.mainloop()
+PYEOF
 
-    root.protocol("WM_DELETE_WINDOW", play_only)
-    root.mainloop()
-
-except Exception as e:
-    # Si falla la UI gráfica, imprimimos error y salimos con 0 (Jugar) para no bloquear
-    print(f"UI Error: {e}")
-    sys.exit(0)
-PY_EOF
-
-            # Ejecutar Python y capturar código de salida
+            # 5. Run Python GUI
             python3 "$PYTHON_UI_SCRIPT"
             EXIT_CODE=$?
             rm -f "$PYTHON_UI_SCRIPT"
 
-            # Decisión
+            # 6. Check Result
             if [ $EXIT_CODE -eq 10 ]; then
-                echo "User chose update. Running installer..."
                 chmod +x "$TEMP_INSTALLER"
                 bash "$TEMP_INSTALLER"
-                exit 0 # Detenemos este script para que el nuevo tome el control
+                exit 0 # Terminate this script, installer takes over
             fi
+            # If EXIT_CODE is 0, user clicked Play or closed window. We continue.
         fi
     fi
-    # Limpiar
     rm -f "$TEMP_INSTALLER"
 }
 
-# --- 1. COMPROBAR ACTUALIZACIONES ANTES DE NADA ---
+# RUN UPDATE CHECKER
 check_for_updates
 
 # =========================================================================
-#                   INICIO DEL JUEGO (WESTON + SOBER)
+#                   WESTON / SOBER LAUNCH LOGIC
 # =========================================================================
 
-# --- CLEANUP ---
+# --- CLEANUP PREVIOUS INSTANCES ---
 pkill -9 -x "sober" 2>/dev/null
 pkill -9 -x "weston" 2>/dev/null
 flatpak ps | grep "org.vinegarhq.Sober" | awk '{print $1}' | xargs -r kill -9 2>/dev/null
 
-# --- VARS ---
+# --- ENVIRONMENT ---
 export SOBER_DISPLAY="wayland-9"
 if [ -z "$XDG_RUNTIME_DIR" ]; then
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -239,12 +189,12 @@ name=X1
 mode=current
 INNER_EOF
 
-# --- DRIVERS ---
+# --- DRIVERS & STABILITY ---
 export X11_NO_MITSHM=1
 export VIRGL_DEBUG=no_fbo_cache
 export mesa_glthread=true
 
-# --- MOUSE FIX ---
+# --- MOUSE LOOP ---
 start_infinite_mouse() {
     sleep 2
     read SCREEN_WIDTH SCREEN_HEIGHT <<< $(xdotool getdisplaygeometry)
@@ -270,6 +220,7 @@ WPID=$!
 start_infinite_mouse &
 MOUSE_PID=$!
 
+# Wait for Wayland socket
 for i in {1..50}; do
     if [ -S "$XDG_RUNTIME_DIR/$SOBER_DISPLAY" ]; then break; fi
     sleep 0.1
@@ -284,16 +235,16 @@ SDL_VIDEODRIVER=wayland \
 CLUTTER_BACKEND=wayland \
 flatpak run org.vinegarhq.Sober
 
-# --- EXIT ---
+# --- CLEANUP ---
 kill -TERM $WPID 2>/dev/null
 kill $MOUSE_PID 2>/dev/null
 rm -rf "$CONFIG_DIR"
 EOF
 
-# 5. Permisos
+# 5. Set execution permissions
 chmod +x ~/.local/bin/launch-sober-weston.sh
 
-# 6. Desktop Entry
+# 6. Create Desktop Entry
 cat > ~/.local/share/applications/sober-fix.desktop <<EOF
 [Desktop Entry]
 Name=Roblox (Sober Fix)
@@ -307,12 +258,15 @@ EOF
 
 chmod +x ~/.local/share/applications/sober-fix.desktop
 
-# 7. Guardar versión
+# 7. Write version file
 echo "$CURRENT_VERSION" > ~/.local/share/sober-fix-version
 
+echo "=========================================="
+echo "INSTALLATION COMPLETE (Version $CURRENT_VERSION)"
+echo "=========================================="
+echo "GUI Issues Fixed:"
+echo "- Language forced to English (fixes encoding errors)."
+echo "- Removed redundant system buttons."
+echo "- Clean layout with 3 clear options."
 echo ""
-echo "=========================================="
-echo " INSTALACION EXITOSA (Ver $CURRENT_VERSION)"
-echo "=========================================="
-echo "Prueba iniciar 'Roblox (Sober Fix)' ahora."
-echo "La interfaz de actualización debería aparecer correctamente."
+echo "Please launch 'Roblox (Sober Fix)' to verify."
