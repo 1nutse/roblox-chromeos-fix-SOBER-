@@ -3,7 +3,7 @@
 # ==========================================
 # CONFIGURATION & CHANGELOG (Edit this for new versions)
 # ==========================================
-CURRENT_VERSION="1" 
+CURRENT_VERSION="3242" 
 
 # Use \n for line breaks in the changelog
 CHANGELOG="
