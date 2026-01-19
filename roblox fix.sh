@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CURRENT_VERSION="1.1"
+CURRENT_VERSION="1"
 
 # 1. Ensure Weston is installed
 # We check if they are installed to avoid sudo if not necessary (helps with background updates)
