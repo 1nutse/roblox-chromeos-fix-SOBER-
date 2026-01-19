@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- CONFIGURACIÓN DE VERSIÓN Y CAMBIOS ---
-CURRENT_VERSION="1"
+CURRENT_VERSION="1.1"
 CHANGELOG="New update System!"
 
 # 1. Ensure Weston and Zenity are installed
