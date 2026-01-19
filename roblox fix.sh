@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Updated version variable for the installer itself
-CURRENT_VERSION="1"
+CURRENT_VERSION="2"
 
 # 1. Ensure Weston, xdotool AND python3-tk are installed
 # Added python3-tk to create the UI without Zenity
