@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- CONFIGURACIÓN DE VERSIÓN LOCAL ---
-CURRENT_VERSION="2.3"
+CURRENT_VERSION="5"
 
 echo "========================================"
 echo "    INSTALANDO SOBER FIX (VER 2.3)      "
