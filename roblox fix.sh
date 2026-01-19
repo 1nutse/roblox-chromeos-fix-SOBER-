@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CURRENT_VERSION="1"
+CURRENT_VERSION="1.1"
 
 # --- CHANGELOG ACTUAL ---
 # Esto se usa para mostrar los cambios cuando alguien actualiza A ESTA versión
