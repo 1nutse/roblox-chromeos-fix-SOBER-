@@ -1,22 +1,20 @@
 #!/bin/bash
 
 # ==============================================================================
-# MASTER CONFIGURATION
+# MASTER CONFIGURATION (Edit this on GitHub)
 # ==============================================================================
-# Change this version number when you push an update to GitHub.
-# The installer will automatically stamp this version into the local launcher.
-CURRENT_VERSION="04666534.0"
+CURRENT_VERSION="5.0"
 
-# CHANGELOG (Keep the quotes exactly like this)
+# CHANGELOG TEXT (Keep inside quotes)
 CHANGELOG_TEXT="
-- Fixed: Version stamping bug (Updates now persist correctly).
-- Fixed: Added cache-busting to ensure new updates are detected immediately.
-- Improved: Used a placeholder system to guarantee version integrity.
-- System: Update popup checks remote file reliably.
+- Fixed: Github caching issue (Updates appear instantly now).
+- Fixed: Version detection logic migrated to Python for 100% accuracy.
+- System: Added timestamp to download URL to bypass proxy cache.
+- System: Update process is now fully robust.
 "
 # ==============================================================================
 
-# 1. Dependencies Check
+# 1. Dependency Check
 echo "[Installer] Checking system dependencies..."
 if ! command -v weston >/dev/null || ! command -v xdotool >/dev/null || ! dpkg -s python3-tk >/dev/null 2>&1; then
     echo "[Installer] Installing Weston, Xdotool, and Python-tk..."
@@ -26,31 +24,30 @@ fi
 # 2. Permissions
 flatpak override --user --socket=wayland --socket=x11 org.vinegarhq.Sober
 
-# 3. Directory Setup
+# 3. Directories
 mkdir -p ~/.local/bin ~/.local/share/applications
 
-# 4. Generate the Launcher Script
-# We use a placeholder __VERSION_TAG__ to avoid variable expansion issues
+# 4. Generate Launcher Script
+# Note: We use __VERSION_TAG__ as a placeholder to be replaced later.
 cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
 #!/bin/bash
 
 # ==============================================================================
-# CONFIGURATION
+# LOCAL CONFIGURATION
 # ==============================================================================
-# This will be replaced by the installer automatically
+# This is replaced automatically by the installer/updater
 LOCAL_VERSION="__VERSION_TAG__"
 
-UPDATE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh"
+BASE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh"
 TEMP_FILE="/tmp/sober_update_candidate.sh"
 REPO_URL="https://github.com/1nutse/roblox-chromeos-fix-SOBER-"
 LAUNCHER_PATH="$HOME/.local/bin/launch-sober-weston.sh"
 
 # ==============================================================================
-# PYTHON GUI UPDATER
+# PYTHON PARSER & GUI (Handles Version & Changelog)
 # ==============================================================================
-run_update_gui() {
-    local remote_ver="$1"
-    local file_path="$2"
+run_update_logic() {
+    local file_path="$1"
     
     python3 -c "
 import tkinter as tk
@@ -59,107 +56,114 @@ import webbrowser
 import sys
 import re
 import os
+import time
 
 FILE_PATH = '$file_path'
-REMOTE_VER = '$remote_ver'
 LOCAL_VER = '$LOCAL_VERSION'
 REPO = '$REPO_URL'
 
-def get_changelog():
+def extract_info():
     try:
         with open(FILE_PATH, 'r', encoding='utf-8') as f:
             content = f.read()
-        match = re.search(r'CHANGELOG_TEXT=\"(.*?)\"', content, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        return 'No changelog info in remote file.'
+            
+        # Extract Version
+        v_match = re.search(r'^CURRENT_VERSION\s*=\s*\"(.*?)\"', content, re.MULTILINE)
+        remote_ver = v_match.group(1) if v_match else None
+        
+        # Extract Changelog
+        c_match = re.search(r'CHANGELOG_TEXT=\"(.*?)\"', content, re.DOTALL)
+        changelog = c_match.group(1).strip() if c_match else 'No changelog found.'
+        
+        return remote_ver, changelog
     except Exception as e:
-        return f'Error: {str(e)}'
+        return None, str(e)
 
 def open_url():
     webbrowser.open(REPO)
 
 def on_update():
-    print('UPDATE')
+    print('ACTION_UPDATE')
     root.destroy()
 
 def on_skip():
-    print('SKIP')
+    print('ACTION_SKIP')
     root.destroy()
 
-root = tk.Tk()
-root.title('Roblox Fix - Update')
-root.geometry('550x500')
-root.resizable(False, False)
+# --- LOGIC START ---
+remote_ver, changelog = extract_info()
 
-style = ttk.Style()
-style.theme_use('clam')
-
-main_frame = ttk.Frame(root, padding='20')
-main_frame.pack(fill='both', expand=True)
-
-ttk.Label(main_frame, text='Update Available!', font=('Helvetica', 16, 'bold')).pack(pady=(0, 5))
-ttk.Label(main_frame, text=f'Version: {LOCAL_VER}  ➜  {REMOTE_VER}', font=('Helvetica', 11)).pack(pady=(0, 15))
-
-ttk.Label(main_frame, text='Changelog:', font=('Helvetica', 10, 'bold')).pack(anchor='w')
-
-txt = scrolledtext.ScrolledText(main_frame, height=14, font=('Consolas', 9))
-txt.insert(tk.END, get_changelog())
-txt.configure(state='disabled')
-txt.pack(fill='both', expand=True, pady=(5, 15))
-
-btn_frame = ttk.Frame(main_frame)
-btn_frame.pack(fill='x')
-
-ttk.Button(btn_frame, text='View Script', command=open_url).pack(side='left')
-ttk.Button(btn_frame, text='Update & Restart', command=on_update).pack(side='right', padx=(5, 0))
-ttk.Button(btn_frame, text='Skip', command=on_skip).pack(side='right')
-
-# Center
-root.update_idletasks()
-w, h = root.winfo_width(), root.winfo_height()
-x = (root.winfo_screenwidth() // 2) - (w // 2)
-y = (root.winfo_screenheight() // 2) - (h // 2)
-root.geometry(f'{w}x{h}+{x}+{y}')
-
-root.mainloop()
+# Only show GUI if version differs and is valid
+if remote_ver and remote_ver != LOCAL_VER:
+    root = tk.Tk()
+    root.title('Roblox Fix - Update')
+    root.geometry('550x520')
+    root.resizable(False, False)
+    style = ttk.Style()
+    style.theme_use('clam')
+    
+    main = ttk.Frame(root, padding='20')
+    main.pack(fill='both', expand=True)
+    
+    ttk.Label(main, text='Update Available!', font=('Helvetica', 16, 'bold')).pack(pady=(0, 5))
+    ttk.Label(main, text=f'Current: {LOCAL_VER}  ➜  New: {remote_ver}', font=('Helvetica', 11)).pack(pady=(0, 15))
+    
+    ttk.Label(main, text='Changelog:', font=('Helvetica', 10, 'bold')).pack(anchor='w')
+    
+    txt = scrolledtext.ScrolledText(main, height=14, font=('Consolas', 9))
+    txt.insert(tk.END, changelog)
+    txt.configure(state='disabled')
+    txt.pack(fill='both', expand=True, pady=(5, 15))
+    
+    btns = ttk.Frame(main)
+    btns.pack(fill='x')
+    
+    ttk.Button(btns, text='View Script', command=open_url).pack(side='left')
+    ttk.Button(btns, text='Update & Restart', command=on_update).pack(side='right', padx=(5, 0))
+    ttk.Button(btns, text='Skip', command=on_skip).pack(side='right')
+    
+    # Center
+    root.update_idletasks()
+    w, h = root.winfo_width(), root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (w // 2)
+    y = (root.winfo_screenheight() // 2) - (h // 2)
+    root.geometry(f'{w}x{h}+{x}+{y}')
+    
+    root.mainloop()
+else:
+    print('ACTION_NONE')
 "
 }
 
 # ==============================================================================
-# CHECK UPDATES
+# DOWNLOAD & CHECK
 # ==============================================================================
-# Added headers to prevent caching issues
-if curl -sS -L -H "Cache-Control: no-cache" --max-time 10 "$UPDATE_URL" -o "$TEMP_FILE"; then
+# Add timestamp to URL to bypass GitHub 5-minute cache
+CACHE_BUSTER=$(date +%s)
+UPDATE_URL="${BASE_URL}?t=${CACHE_BUSTER}"
+
+if curl -sS -L --max-time 10 "$UPDATE_URL" -o "$TEMP_FILE"; then
     
-    # Extract Remote Version
-    REMOTE_VER=$(grep '^CURRENT_VERSION=' "$TEMP_FILE" | head -n 1 | cut -d'"' -f2)
+    # Python handles extraction and comparison now (More reliable than grep)
+    RESULT=$(run_update_logic "$TEMP_FILE")
     
-    # Debug info in terminal
-    echo "[Updater] Local: $LOCAL_VERSION | Remote: $REMOTE_VER"
+    # Clean output (grab last line just in case of GTK warnings)
+    ACTION=$(echo "$RESULT" | tail -n 1)
     
-    if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$LOCAL_VERSION" ]; then
+    if [ "$ACTION" == "ACTION_UPDATE" ]; then
+        echo "[Updater] Installing update..."
+        chmod +x "$TEMP_FILE"
+        bash "$TEMP_FILE"
         
-        # Open GUI
-        ACTION=$(run_update_gui "$REMOTE_VER" "$TEMP_FILE")
-        
-        if [ "$ACTION" == "UPDATE" ]; then
-            echo "[Updater] Installing update..."
-            chmod +x "$TEMP_FILE"
-            bash "$TEMP_FILE"
-            
-            # Restart with the new script
-            echo "[Updater] Restarting..."
-            exec bash "$LAUNCHER_PATH"
-        fi
+        echo "[Updater] Restarting application..."
+        exec bash "$LAUNCHER_PATH"
     fi
-else
-    echo "[Updater] Could not check for updates (No internet?)"
+    # If ACTION_NONE or ACTION_SKIP, continue to launch Weston
 fi
 rm -f "$TEMP_FILE"
 
 # ==============================================================================
-# WESTON / SOBER LOGIC
+# WESTON / SOBER EXECUTION
 # ==============================================================================
 
 # Cleanup
@@ -167,7 +171,7 @@ pkill -9 -x "sober" 2>/dev/null
 pkill -9 -x "weston" 2>/dev/null
 flatpak ps | grep "org.vinegarhq.Sober" | awk '{print $1}' | xargs -r kill -9 2>/dev/null
 
-# Environment
+# Env
 export SOBER_DISPLAY="wayland-9"
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 
@@ -176,7 +180,7 @@ mkdir -p "$CONFIG_DIR"
 rm -f "$XDG_RUNTIME_DIR/$SOBER_DISPLAY"
 rm -f "$XDG_RUNTIME_DIR/$SOBER_DISPLAY.lock"
 
-# Weston Ini
+# Weston Config
 cat > "$CONFIG_DIR/weston.ini" <<INNER_EOF
 [core]
 backend=x11-backend.so
@@ -217,7 +221,7 @@ start_infinite_mouse() {
     done
 }
 
-# Run Weston
+# Launch
 weston --config="$CONFIG_DIR/weston.ini" --socket="$SOBER_DISPLAY" --fullscreen > /tmp/weston.log 2>&1 &
 WPID=$!
 
@@ -239,20 +243,19 @@ SDL_VIDEODRIVER=wayland \
 CLUTTER_BACKEND=wayland \
 flatpak run org.vinegarhq.Sober
 
-# Exit Cleanup
+# Exit
 kill -TERM $WPID 2>/dev/null
 kill $MOUSE_PID 2>/dev/null
 rm -rf "$CONFIG_DIR"
 EOF
 
-# 5. STAMP THE CORRECT VERSION
-# This is the critical fix. We replace __VERSION_TAG__ with the variable from this installer.
+# 5. VERSION STAMPING (Critical)
+# This replaces __VERSION_TAG__ with the actual version defined at the top
 sed -i "s/__VERSION_TAG__/$CURRENT_VERSION/" ~/.local/bin/launch-sober-weston.sh
 
-# 6. Make Executable
+# 6. Finalize
 chmod +x ~/.local/bin/launch-sober-weston.sh
 
-# 7. Create Desktop Entry
 cat > ~/.local/share/applications/sober-fix.desktop <<EOF
 [Desktop Entry]
 Name=Roblox (Sober Fix)
@@ -268,5 +271,4 @@ chmod +x ~/.local/share/applications/sober-fix.desktop
 echo "=========================================="
 echo "INSTALLATION COMPLETE (Version $CURRENT_VERSION)"
 echo "=========================================="
-echo "The version has been stamped into the launcher."
-echo "Launch 'Roblox (Sober Fix)' to start."
+echo "Ready to play."
