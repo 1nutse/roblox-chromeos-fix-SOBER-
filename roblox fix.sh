@@ -3,82 +3,61 @@
 # ==============================================================================
 # CONFIGURATION & CHANGELOG
 # ==============================================================================
-CURRENT_VERSION="3.0"
+# Esta variable define la versión tanto para la comprobación local como remota.
+CURRENT_VERSION="2.0"
 
-# CHANGELOG TEXT (Keep the structure exactly like this)
+# Escribe aquí los cambios. El actualizador extraerá esto para mostrarlo en el popup.
 CHANGELOG_TEXT="
-- Fixed: Update loop bugs completely resolved.
-- Fixed: Changelog is now read directly by Python (100% reliable).
-- Fixed: Auto-restart now uses absolute path to prevent closure.
-- Feature: Added failsafe if changelog cannot be read.
-- System: Weston and Mouse fixes maintained strictly.
+- Added Python-based GUI update checker (No Zenity).
+- Added Changelog display in the updater.
+- Added 'View Script' button to inspect code before updating.
+- Maintained all specific Weston/Mesa configurations.
+- Fixed logic to prevent Weston from starting if update is pending.
 "
 # ==============================================================================
 
-# 1. Install Dependencies
-echo "Checking system dependencies..."
+# 1. Ensure Dependencies (Weston, Xdotool, Python3-tk for the popup)
+# Added python3-tk to ensure the popup works
 if ! command -v weston >/dev/null || ! command -v xdotool >/dev/null || ! dpkg -s python3-tk >/dev/null 2>&1; then
-    echo "Installing Weston, Xdotool, and Python-tk..."
+    echo "Installing necessary dependencies..."
     sudo apt-get update && sudo apt-get install -y weston xdotool python3-tk python3
 fi
 
-# 2. Flatpak Overrides
+# 2. Grant Flatpak permissions
 flatpak override --user --socket=wayland --socket=x11 org.vinegarhq.Sober
 
-# 3. Directories
+# 3. Create directories
 mkdir -p ~/.local/bin ~/.local/share/applications
 
-# 4. Generate the robust Launcher
-cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
+# 4. Create the optimized launch script with embedded Python Updater
+cat > ~/.local/bin/launch-sober-weston.sh <<EOF
 #!/bin/bash
 
 # ==============================================================================
-# 1. SETUP VARIABLES
+# VARIABLES & PATHS
 # ==============================================================================
-# NOTA: El instalador reemplazará esta línea con la versión real
-CURRENT_VERSION="3.0" 
-
+# Variables injectadas desde el instalador
+LOCAL_VERSION="$CURRENT_VERSION"
 UPDATE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh"
-TEMP_FILE="/tmp/sober_update_candidate.sh"
+TEMP_INSTALLER="/tmp/roblox-fix-update.sh"
 REPO_URL="https://github.com/1nutse/roblox-chromeos-fix-SOBER-"
-LAUNCHER_PATH="$HOME/.local/bin/launch-sober-weston.sh"
 
 # ==============================================================================
-# 2. PYTHON GUI UPDATER (Self-Contained)
+# PYTHON GUI UPDATER FUNCTION
 # ==============================================================================
-# This function creates a python script on the fly that reads the downloaded file
-run_update_gui() {
-    local remote_ver="$1"
-    local file_path="$2"
+show_update_popup() {
+    local remote_ver="\$1"
+    local changelog="\$2"
     
+    # Python script embedded
     python3 -c "
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 import webbrowser
 import sys
-import re
-import os
-
-# --- Configuration ---
-FILE_PATH = '$file_path'
-REMOTE_VER = '$remote_ver'
-LOCAL_VER = '$CURRENT_VERSION'
-REPO = '$REPO_URL'
-
-def get_changelog():
-    try:
-        with open(FILE_PATH, 'r', encoding='utf-8') as f:
-            content = f.read()
-        # Robust Regex to find the variable CHANGELOG_TEXT=\"...\"
-        match = re.search(r'CHANGELOG_TEXT=\"(.*?)\"', content, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-        return 'Changelog not found in the remote file.'
-    except Exception as e:
-        return f'Error reading changelog: {str(e)}'
 
 def open_url():
-    webbrowser.open(REPO)
+    webbrowser.open('$REPO_URL')
 
 def on_update():
     print('UPDATE')
@@ -88,100 +67,108 @@ def on_skip():
     print('SKIP')
     root.destroy()
 
-# --- GUI Setup ---
 root = tk.Tk()
-root.title('Roblox Fix - Update')
-root.geometry('550x500')
+root.title('Roblox Fix - Update Available')
+root.geometry('500x450')
 root.resizable(False, False)
 
+# Style
 style = ttk.Style()
 style.theme_use('clam')
 
+# Main Frame
 main_frame = ttk.Frame(root, padding='20')
 main_frame.pack(fill='both', expand=True)
 
 # Header
-ttk.Label(main_frame, text='New Update Available', font=('Helvetica', 16, 'bold')).pack(pady=(0, 5))
-ttk.Label(main_frame, text=f'Version: {LOCAL_VER}  ➜  {REMOTE_VER}', font=('Helvetica', 11)).pack(pady=(0, 15))
+header = ttk.Label(main_frame, text='New Version Available!', font=('Helvetica', 16, 'bold'))
+header.pack(pady=(0, 10))
 
-# Changelog
-ttk.Label(main_frame, text='What\'s New:', font=('Helvetica', 10, 'bold')).pack(anchor='w')
+info_lbl = ttk.Label(main_frame, text=f'Local Version: $LOCAL_VERSION  |  New Version: {remote_ver}', font=('Helvetica', 10))
+info_lbl.pack(pady=(0, 10))
 
-txt = scrolledtext.ScrolledText(main_frame, height=14, font=('Consolas', 9))
-txt.insert(tk.END, get_changelog())
-txt.configure(state='disabled')
+# Changelog Area
+lbl_change = ttk.Label(main_frame, text='Changelog:', font=('Helvetica', 10, 'bold'))
+lbl_change.pack(anchor='w')
+
+txt = scrolledtext.ScrolledText(main_frame, height=10, font=('Consolas', 9))
+txt.insert(tk.END, '''$changelog''')
+txt.configure(state='disabled') # Read only
 txt.pack(fill='both', expand=True, pady=(5, 15))
 
-# Buttons
+# Buttons Frame
 btn_frame = ttk.Frame(main_frame)
 btn_frame.pack(fill='x')
 
-ttk.Button(btn_frame, text='View Script', command=open_url).pack(side='left')
-ttk.Button(btn_frame, text='Update & Restart', command=on_update).pack(side='right', padx=(5, 0))
-ttk.Button(btn_frame, text='Skip Update', command=on_skip).pack(side='right')
+btn_view = ttk.Button(btn_frame, text='View Script (Web)', command=open_url)
+btn_view.pack(side='left')
 
-# Center Window
-root.update_idletasks()
-w = root.winfo_width()
-h = root.winfo_height()
-x = (root.winfo_screenwidth() // 2) - (w // 2)
-y = (root.winfo_screenheight() // 2) - (h // 2)
-root.geometry(f'{w}x{h}+{x}+{y}')
+btn_skip = ttk.Button(btn_frame, text='Skip Update', command=on_skip)
+btn_skip.pack(side='right', padx=(5, 0))
+
+btn_update = ttk.Button(btn_frame, text='Update Now', command=on_update)
+btn_update.pack(side='right')
+
+# Center window
+root.eval('tk::PlaceWindow . center')
 
 root.mainloop()
 "
 }
 
 # ==============================================================================
-# 3. UPDATE CHECK LOGIC
+# UPDATE CHECK LOGIC
 # ==============================================================================
-# Download silently
-if curl -sS --max-time 5 "$UPDATE_URL" -o "$TEMP_FILE"; then
+# Download remote script silently
+if curl -sS --max-time 5 "\$UPDATE_URL" -o "\$TEMP_INSTALLER"; then
     
-    # Extract version from the first 20 lines (avoids reading the whole file)
-    REMOTE_VER=$(head -n 20 "$TEMP_FILE" | grep '^CURRENT_VERSION=' | head -n 1 | cut -d'"' -f2)
+    # Extract Remote Version safely
+    REMOTE_VER=\$(grep '^CURRENT_VERSION=' "\$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
     
-    # Check if update is needed
-    if [ "$REMOTE_VER" != "$CURRENT_VERSION" ] && [ -n "$REMOTE_VER" ]; then
+    # Extract Remote Changelog (Parses text between CHANGELOG_TEXT=" and the closing quote)
+    # Using perl for multiline matching because sed is tricky with newlines in variables
+    REMOTE_CHANGELOG=\$(perl -0777 -ne 'print \$1 if /CHANGELOG_TEXT="(.*?)"/s' "\$TEMP_INSTALLER")
+
+    # If versions match or remote is empty, do nothing. If different, show popup.
+    if [ "\$REMOTE_VER" != "\$LOCAL_VERSION" ] && [ -n "\$REMOTE_VER" ]; then
         
-        # Show Python Popup (It reads the file directly)
-        USER_ACTION=$(run_update_gui "$REMOTE_VER" "$TEMP_FILE")
+        # Run Python Popup and capture output (UPDATE or SKIP)
+        USER_CHOICE=\$(show_update_popup "\$REMOTE_VER" "\$REMOTE_CHANGELOG")
         
-        if [ "$USER_ACTION" == "UPDATE" ]; then
-            echo "Applying update..."
-            chmod +x "$TEMP_FILE"
-            
-            # Execute the downloaded script to install itself
-            bash "$TEMP_FILE"
-            
-            # CLEAN RESTART
-            echo "Restarting application..."
-            exec bash "$LAUNCHER_PATH"
+        if [ "\$USER_CHOICE" == "UPDATE" ]; then
+            echo "Updating..."
+            chmod +x "\$TEMP_INSTALLER"
+            bash "\$TEMP_INSTALLER"
+            exit 0 # Exit this old script, the new installer handles the rest
+        elif [ "\$USER_CHOICE" == "SKIP" ]; then
+            echo "Update skipped by user."
         fi
     fi
 fi
-rm -f "$TEMP_FILE"
+rm -f "\$TEMP_INSTALLER"
 
 # ==============================================================================
-# 4. WESTON & SOBER EXECUTION (STABLE)
+# WESTON & SOBER LAUNCH LOGIC (Original & Stable)
 # ==============================================================================
 
-# Cleanup
+# --- CLEANUP PREVIOUS INSTANCES ---
 pkill -9 -x "sober" 2>/dev/null
 pkill -9 -x "weston" 2>/dev/null
-flatpak ps | grep "org.vinegarhq.Sober" | awk '{print $1}' | xargs -r kill -9 2>/dev/null
+flatpak ps | grep "org.vinegarhq.Sober" | awk '{print \$1}' | xargs -r kill -9 2>/dev/null
 
-# Environment
+# --- ENVIRONMENT CONFIGURATION ---
 export SOBER_DISPLAY="wayland-9"
-export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+if [ -z "\$XDG_RUNTIME_DIR" ]; then
+    export XDG_RUNTIME_DIR="/run/user/\$(id -u)"
+fi
 
 CONFIG_DIR="/tmp/weston-sober-config"
-mkdir -p "$CONFIG_DIR"
-rm -f "$XDG_RUNTIME_DIR/$SOBER_DISPLAY"
-rm -f "$XDG_RUNTIME_DIR/$SOBER_DISPLAY.lock"
+mkdir -p "\$CONFIG_DIR"
+rm -f "\$XDG_RUNTIME_DIR/\$SOBER_DISPLAY"
+rm -f "\$XDG_RUNTIME_DIR/\$SOBER_DISPLAY.lock"
 
-# Weston Config
-cat > "$CONFIG_DIR/weston.ini" <<INNER_EOF
+# --- WESTON CONFIGURATION ---
+cat > "\$CONFIG_DIR/weston.ini" <<INNER_EOF
 [core]
 backend=x11-backend.so
 shell=kiosk-shell.so
@@ -198,44 +185,62 @@ name=X1
 mode=current
 INNER_EOF
 
-# Drivers
+# --- STABILITY VARIABLES (X11 + Drivers) ---
 export X11_NO_MITSHM=1
 export VIRGL_DEBUG=no_fbo_cache
 export mesa_glthread=true
 
-# Mouse Loop
+# --- INFINITE MOUSE LOOP ---
 start_infinite_mouse() {
     sleep 2
-    read SCREEN_WIDTH SCREEN_HEIGHT <<< $(xdotool getdisplaygeometry)
+    read SCREEN_WIDTH SCREEN_HEIGHT <<< \$(xdotool getdisplaygeometry)
+    
     while true; do
-        eval $(xdotool getmouselocation --shell)
-        NEW_X=$X; NEW_Y=$Y; CHANGED=0
+        eval \$(xdotool getmouselocation --shell)
+        NEW_X=\$X
+        NEW_Y=\$Y
+        CHANGED=0
         
-        [ "$X" -le 0 ] && { NEW_X=$((SCREEN_WIDTH - 2)); CHANGED=1; }
-        [ "$X" -ge $((SCREEN_WIDTH - 1)) ] && { NEW_X=1; CHANGED=1; }
-        [ "$Y" -le 0 ] && { NEW_Y=$((SCREEN_HEIGHT - 2)); CHANGED=1; }
-        [ "$Y" -ge $((SCREEN_HEIGHT - 1)) ] && { NEW_Y=1; CHANGED=1; }
+        if [ "\$X" -le 0 ]; then
+            NEW_X=\$((SCREEN_WIDTH - 2))
+            CHANGED=1
+        elif [ "\$X" -ge \$((SCREEN_WIDTH - 1)) ]; then
+            NEW_X=1
+            CHANGED=1
+        fi
         
-        [ "$CHANGED" -eq 1 ] && xdotool mousemove $NEW_X $NEW_Y
+        if [ "\$Y" -le 0 ]; then
+            NEW_Y=\$((SCREEN_HEIGHT - 2))
+            CHANGED=1
+        elif [ "\$Y" -ge \$((SCREEN_HEIGHT - 1)) ]; then
+            NEW_Y=1
+            CHANGED=1
+        fi
+        
+        if [ "\$CHANGED" -eq 1 ]; then
+            xdotool mousemove \$NEW_X \$NEW_Y
+        fi
         sleep 0.005
     done
 }
 
-# Launch
-weston --config="$CONFIG_DIR/weston.ini" --socket="$SOBER_DISPLAY" --fullscreen > /tmp/weston.log 2>&1 &
-WPID=$!
+# --- START WESTON ---
+weston --config="\$CONFIG_DIR/weston.ini" --socket="\$SOBER_DISPLAY" --fullscreen > /tmp/weston-sober.log 2>&1 &
+WPID=\$!
 
 start_infinite_mouse &
-MOUSE_PID=$!
+MOUSE_PID=\$!
 
-# Wait for Wayland socket
+# Wait for socket
 for i in {1..50}; do
-    [ -S "$XDG_RUNTIME_DIR/$SOBER_DISPLAY" ] && break
+    if [ -S "\$XDG_RUNTIME_DIR/\$SOBER_DISPLAY" ]; then
+        break
+    fi
     sleep 0.1
 done
 
-# Run Game
-WAYLAND_DISPLAY="$SOBER_DISPLAY" \
+# --- LAUNCH SOBER ---
+WAYLAND_DISPLAY="\$SOBER_DISPLAY" \
 DISPLAY="" \
 GDK_BACKEND=wayland \
 QT_QPA_PLATFORM=wayland \
@@ -243,19 +248,16 @@ SDL_VIDEODRIVER=wayland \
 CLUTTER_BACKEND=wayland \
 flatpak run org.vinegarhq.Sober
 
-# Cleanup on Exit
-kill -TERM $WPID 2>/dev/null
-kill $MOUSE_PID 2>/dev/null
-rm -rf "$CONFIG_DIR"
+# --- EXIT CLEANUP ---
+kill -TERM \$WPID 2>/dev/null
+kill \$MOUSE_PID 2>/dev/null
+rm -rf "\$CONFIG_DIR"
 EOF
 
-# 5. Inject current version correctly into the generated script
-sed -i "s/^CURRENT_VERSION=\"3.0\"/CURRENT_VERSION=\"$CURRENT_VERSION\"/" ~/.local/bin/launch-sober-weston.sh
-
-# 6. Set Permissions
+# 5. Set execution permissions
 chmod +x ~/.local/bin/launch-sober-weston.sh
 
-# 7. Desktop Entry
+# 6. Create Desktop Entry
 cat > ~/.local/share/applications/sober-fix.desktop <<EOF
 [Desktop Entry]
 Name=Roblox (Sober Fix)
@@ -266,9 +268,15 @@ Terminal=false
 Type=Application
 Categories=Game;
 EOF
+
 chmod +x ~/.local/share/applications/sober-fix.desktop
 
 echo "=========================================="
-echo "INSTALLATION COMPLETE (Version $CURRENT_VERSION)"
+echo "SYSTEM UPDATED AND READY (Version $CURRENT_VERSION)"
 echo "=========================================="
-echo "Launch 'Roblox (Sober Fix)' from your menu."
+echo "Features applied:"
+echo "- Python GUI Update Checker included."
+echo "- Auto-Changelog reader."
+echo "- Graphics/Mouse fixes maintained."
+echo ""
+echo "Launch 'Roblox (Sober Fix)' to test the update system."
