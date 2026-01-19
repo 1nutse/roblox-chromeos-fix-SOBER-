@@ -1,21 +1,13 @@
 #!/bin/bash
 
-CURRENT_VERSION="1.1"
+CURRENT_VERSION="1"
+# Añade aquí tus cambios para la próxima versión
+CURRENT_CHANGELOG="Se añadió sistema de preguntas para actualizar y soporte para changelogs."
 
-# --- CHANGELOG ACTUAL ---
-# Esto se usa para mostrar los cambios cuando alguien actualiza A ESTA versión
-CHANGELOG_TEXT="
-- Implementado sistema de notificación de actualizaciones (Popup).
-- Agregado soporte para ver el registro de cambios (Changelog) antes de actualizar.
-- Correcciones menores de estabilidad.
-"
-# ------------------------
-
-# 1. Ensure Weston and Zenity are installed
-# Added 'zenity' for the update popup dialogs
-if ! command -v weston >/dev/null || ! command -v xdotool >/dev/null || ! command -v zenity >/dev/null; then
-    echo "Instalando dependencias necesarias (Weston, Xdotool, Zenity)..."
-    sudo apt-get update && sudo apt-get install -y weston xdotool zenity
+# 1. Ensure Weston and tools are installed
+# Added x11-utils to provide 'xmessage' for the popup (No Zenity requirement)
+if ! command -v weston >/dev/null || ! command -v xdotool >/dev/null || ! command -v xmessage >/dev/null; then
+    sudo apt-get update && sudo apt-get install -y weston xdotool x11-utils
 fi
 
 # 2. Grant Flatpak permissions for windowing system
@@ -28,51 +20,49 @@ mkdir -p ~/.local/bin ~/.local/share/applications
 cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
 #!/bin/bash
 
-# --- CONFIGURACIÓN DE VERSIÓN Y CHANGELOG ---
-# Los marcadores de inicio/fin son importantes para que el actualizador lea el changelog remoto
-# --- CHANGELOG START ---
-CURRENT_CHANGELOG="
-- Sistema de actualización interactivo agregado.
-- Mejoras en la detección de dependencias.
-"
-# --- CHANGELOG END ---
+# --- VARIABLES DE VERSION ---
+CURRENT_VERSION="2"
+CHANGELOG="Se añadió sistema de preguntas para actualizar y soporte para changelogs."
 
-# --- AUTO UPDATE CHECK ---
+# --- AUTO UPDATE CHECK WITH PROMPT ---
 VERSION_FILE="$HOME/.local/share/sober-fix-version"
 UPDATE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh"
 TEMP_INSTALLER="/tmp/roblox-fix-update.sh"
 
+# Ensure local version file exists
+if [ ! -f "$VERSION_FILE" ]; then
+    echo "$CURRENT_VERSION" > "$VERSION_FILE"
+fi
+
 # Check for update (timeout 5s)
 if curl -sS --max-time 5 "$UPDATE_URL" -o "$TEMP_INSTALLER"; then
-    # Extract version from downloaded script
+    # Extract version and changelog from downloaded script
     REMOTE_VER=$(grep '^CURRENT_VERSION=' "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
+    REMOTE_LOG=$(grep '^CHANGELOG=' "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
     LOCAL_VER=$(cat "$VERSION_FILE" 2>/dev/null || echo "0.0")
     
+    # Check if remote is different and valid
     if [ "$REMOTE_VER" != "$LOCAL_VER" ] && [ -n "$REMOTE_VER" ]; then
-        # Extraer el changelog de la versión remota usando sed
-        REMOTE_CHANGELOG=$(sed -n '/# --- CHANGELOG START ---/,/# --- CHANGELOG END ---/p' "$TEMP_INSTALLER" | grep -v "CHANGELOG")
         
-        # Preguntar al usuario usando Zenity
-        zenity --question \
-               --title="Actualización Disponible" \
-               --text="Hay una nueva versión del fix de Sober (v$REMOTE_VER).\nVersión actual: v$LOCAL_VER\n\n<b>Cambios en esta actualización:</b>\n$REMOTE_CHANGELOG\n\n¿Quieres actualizar ahora?" \
-               --width=400
+        # Prepare Message for xmessage
+        MSG="NUEVA ACTUALIZACION DISPONIBLE\n\nVersión Actual: $LOCAL_VER\nNueva Versión: $REMOTE_VER\n\nCambios (Changelog):\n$REMOTE_LOG\n\n¿Deseas actualizar ahora?"
         
-        if [ $? -eq 0 ]; then
-            # Usuario dijo SI
+        # Show Popup (xmessage)
+        # Returns 0 for first button (Update), 1 for second (Play)
+        echo -e "$MSG" | xmessage -center -buttons "SI, ACTUALIZAR:0","NO, JUGAR AHORA:1" -default "SI, ACTUALIZAR" -file -
+        RESPONSE=$?
+        
+        if [ $RESPONSE -eq 0 ]; then
+            echo "Iniciando actualización..."
             chmod +x "$TEMP_INSTALLER"
-            
-            # Ejecutar instalador
-            # Usamos un terminal para que el usuario vea el proceso si es necesario, 
-            # o ejecutamos directo si el script original no requiere interacción de consola.
+            # Run the installer to update scripts
             bash "$TEMP_INSTALLER"
-            
-            zenity --info --text="Actualización completada. El juego se iniciará ahora." --timeout=3
             
             # Re-launch the (now updated) script
             exec "$0"
+        else
+            echo "Actualización omitida por el usuario."
         fi
-        # Si usuario dice NO, continuamos con la carga normal
     fi
 fi
 rm -f "$TEMP_INSTALLER"
@@ -216,9 +206,14 @@ chmod +x ~/.local/share/applications/sober-fix.desktop
 echo "$CURRENT_VERSION" > ~/.local/share/sober-fix-version
 
 echo "=========================================="
-echo "SISTEMA ACTUALIZADO (Versión $CURRENT_VERSION)"
+echo "SYSTEM UPDATED AND READY (Version $CURRENT_VERSION)"
 echo "=========================================="
-echo "Cambios aplicados:"
-echo "$CHANGELOG_TEXT"
+echo "Applied changes:"
+echo "- Added User Prompt (Popup) for updates."
+echo "- Added Changelog support inside code."
+echo "- Fixed 'Frozen Instance' error."
+echo "- Disabled screen idle timeout."
+echo "- Improved Mesa/VirGL driver compatibility."
+echo "- Hardened launcher cleanup logic."
 echo ""
-echo "Puedes iniciar el juego desde el menú 'Roblox (Sober Fix)'."
+echo "You can launch the game via 'Roblox (Sober Fix)' in your menu."
