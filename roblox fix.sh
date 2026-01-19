@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define version for the installer itself (matches the one injected below)
-CURRENT_VERSION="1.1"
+CURRENT_VERSION="1.3"
 
 # 1. Ensure Weston and YAD (for popups) are installed
 # Added 'yad' to the install list as requested (alternative to Zenity)
