@@ -1,205 +1,207 @@
 #!/bin/bash
 
-# --- LOCAL VERSION (INSTALLER) ---
-CURRENT_VERSION="1"
+# --- INSTALLER CONFIGURATION ---
+INSTALL_VERSION="1"
 
-# 1. Ensure Dependencies
+# 1. VERIFY DEPENDENCIES
+# We check silently first.
 if ! command -v weston >/dev/null || ! command -v xdotool >/dev/null || ! dpkg -s python3-tk >/dev/null 2>&1; then
-    echo "Installing required packages..."
+    echo "Installing required packages (Weston, Xdotool, Python3-Tk)..."
     sudo apt-get update && sudo apt-get install -y weston xdotool python3-tk
 fi
 
-# 2. Grant Flatpak permissions
+# 2. FLATPAK PERMISSIONS
 flatpak override --user --socket=wayland --socket=x11 org.vinegarhq.Sober
 
-# 3. Create directories
+# 3. DIRECTORY SETUP
 mkdir -p ~/.local/bin ~/.local/share/applications
 
-# 4. CREATE THE LAUNCH SCRIPT
+# 4. GENERATE LAUNCH SCRIPT
+# We use 'EOF' (quoted) so variables are NOT expanded now, but written literally to the file.
 cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
 #!/bin/bash
 
 # --- CHANGELOG START ---
-# Version 2.3:
-# - Added intelligent Downgrade detection.
-# - UI now changes color (Green for Update, Orange for Downgrade).
-# - Button text changes dynamically ("UPDATE NOW" vs "DOWNGRADE").
-# - Version comparison logic moved to Python for accuracy.
+# Version 2.4:
+# - REFACTOR: All critical variables defined at the very top.
+# - Easier to maintain GitHub repository links.
+# - Centralized configuration for Display and Paths.
+# - Retains Upgrade/Downgrade detection logic.
 # --- CHANGELOG END ---
 
-# CURRENT SCRIPT VERSION
-MY_VERSION="2.3"
+# ==============================================================================
+# 1. GLOBAL CONFIGURATION (DEFINE EVERYTHING HERE)
+# ==============================================================================
 
-# CONFIGURATION
+# --- SCRIPT VERSION ---
+MY_VERSION="1.1"
+
+# --- GITHUB SETTINGS ---
+GITHUB_USER="1nutse"
+GITHUB_REPO="roblox-chromeos-fix-SOBER-"
+GITHUB_BRANCH="main"
+SCRIPT_FILENAME="roblox%20fix.sh" # encoded url
+
+# --- UPDATE URLS (Constructed dynamically) ---
+# We use a timestamp (?t=...) to bypass GitHub raw cache
+CURRENT_TIME=$(date +%s)
+UPDATE_URL="https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/refs/heads/${GITHUB_BRANCH}/${SCRIPT_FILENAME}?t=${CURRENT_TIME}"
+VIEW_CODE_URL="https://github.com/${GITHUB_USER}/${GITHUB_REPO}/blob/${GITHUB_BRANCH}/${SCRIPT_FILENAME}"
+
+# --- FILE PATHS ---
 VERSION_FILE="$HOME/.local/share/sober-fix-version"
-# Anti-cache timestamp
-UPDATE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh?t=$(date +%s)"
-RAW_URL_NO_PARAM="https://github.com/1nutse/roblox-chromeos-fix-SOBER-/blob/main/roblox%20fix.sh"
 TEMP_INSTALLER="/tmp/roblox-fix-update.sh"
 PYTHON_UI_SCRIPT="/tmp/sober_update_ui.py"
+WESTON_LOG="/tmp/weston-sober.log"
+WESTON_CONFIG_DIR="/tmp/weston-sober-config"
 
-# --- UPDATE CHECKER LOGIC ---
+# --- WESTON / DISPLAY SETTINGS ---
+export SOBER_DISPLAY="wayland-9"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+# ==============================================================================
+# 2. UPDATE CHECKER LOGIC
+# ==============================================================================
+
 check_for_updates() {
-    # 1. Download script silently
+    # Download the remote script silently
     if curl -sS --max-time 5 "$UPDATE_URL" -o "$TEMP_INSTALLER"; then
         
-        # 2. Extract Remote Version
-        REMOTE_VER=$(grep -o 'CURRENT_VERSION="[^"]*"' "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
+        # Extract Remote Version (Look for MY_VERSION="X.X" or CURRENT_VERSION="X.X")
+        # We search specifically for the variable definition at the top of the remote file
+        REMOTE_VER=$(grep -o 'MY_VERSION="[^"]*"' "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
+        
+        # Fallback for older script versions
         if [ -z "$REMOTE_VER" ]; then
              REMOTE_VER=$(grep "CURRENT_VERSION=" "$TEMP_INSTALLER" | head -n 1 | cut -d'"' -f2)
         fi
 
-        # 3. Check if versions differ (Not Equal)
+        # Compare Versions (String inequality check)
         if [ -n "$REMOTE_VER" ] && [ "$REMOTE_VER" != "$MY_VERSION" ]; then
             
             # Extract Changelog
             CHANGELOG=$(sed -n '/# --- CHANGELOG START ---/,/# --- CHANGELOG END ---/p' "$TEMP_INSTALLER" | sed 's/# //g' | sed 's/--- CHANGELOG START ---//g' | sed 's/--- CHANGELOG END ---//g')
             if [ -z "$CHANGELOG" ]; then CHANGELOG="No changelog details available."; fi
 
-            # 4. Generate Python GUI Script
-            # Logic: Python handles the logic to determine if it is an Upgrade or Downgrade
+            # Generate Python GUI
             cat > "$PYTHON_UI_SCRIPT" <<PYEOF
 import tkinter as tk
 from tkinter import scrolledtext
 import webbrowser
 import sys
 
-# Injected Variables
+# --- INJECTED VARIABLES FROM BASH ---
 local_ver = "$MY_VERSION"
 remote_ver = "$REMOTE_VER"
 changelog_text = """$CHANGELOG"""
-script_url = "$RAW_URL_NO_PARAM"
+script_url = "$VIEW_CODE_URL"
 
-# --- VERSION COMPARISON LOGIC ---
+# --- LOGIC: DETECT DOWNGRADE VS UPGRADE ---
 def get_parts(v):
-    try:
-        return [int(x) for x in v.split('.') if x.isdigit()]
-    except:
-        return [0]
+    try: return [int(x) for x in v.split('.') if x.isdigit()]
+    except: return [0]
 
 l_parts = get_parts(local_ver)
 r_parts = get_parts(remote_ver)
 
 is_downgrade = r_parts < l_parts
 
-# --- UI SETTINGS BASED ON TYPE ---
+# --- UI THEME CONFIG ---
 if is_downgrade:
     ui_title = "Downgrade Available"
-    ui_header_color = "#e65100" # Orange/Amber
+    ui_header_color = "#e65100" # Orange
     ui_btn_text = "DOWNGRADE"
     ui_btn_bg = "#ef6c00"
-    msg_header = "Older Version Detected!"
+    msg_header = "Older Version Detected"
 else:
     ui_title = "Update Available"
     ui_header_color = "#2e7d32" # Green
     ui_btn_text = "UPDATE NOW"
     ui_btn_bg = "#007bff"
-    msg_header = "New Version Available!"
+    msg_header = "New Version Available"
 
+# --- ACTIONS ---
 def on_action():
     root.destroy()
-    sys.exit(10) # Exit 10 -> PROCEED
+    sys.exit(10) # Code 10 = Perform Action
 
 def on_skip():
     root.destroy()
-    sys.exit(0) # Exit 0 -> PLAY GAME
+    sys.exit(0) # Code 0 = Skip
 
 def on_view_code():
     webbrowser.open(script_url)
 
-# Window Setup
+# --- GUI BUILD ---
 root = tk.Tk()
 root.title("Sober Fix - " + ui_title)
 root.geometry("500x420")
 root.resizable(False, False)
 
-# Main Container
 main_frame = tk.Frame(root, padx=15, pady=15)
 main_frame.pack(expand=True, fill="both")
 
-# Header
 tk.Label(main_frame, text=msg_header, font=("Arial", 14, "bold"), fg=ui_header_color).pack(pady=(0, 10))
 
-# Version Info Box
 v_frame = tk.Frame(main_frame, relief="groove", borderwidth=2, padx=10, pady=8)
 v_frame.pack(fill="x", pady=5)
 
-# Left side (Local)
 tk.Label(v_frame, text=f"Current: {local_ver}", font=("Arial", 10)).pack(side="left")
+r_fg = "#d32f2f" if is_downgrade else "#2e7d32"
+tk.Label(v_frame, text=f"Remote: {remote_ver}", font=("Arial", 10, "bold"), fg=r_fg).pack(side="right")
 
-# Right side (Remote) - Color depends on downgrade status
-r_color = "#d32f2f" if is_downgrade else "#2e7d32"
-tk.Label(v_frame, text=f"Remote: {remote_ver}", font=("Arial", 10, "bold"), fg=r_color).pack(side="right")
-
-# Changelog Section
 tk.Label(main_frame, text="Changelog / Details:", font=("Arial", 10, "bold"), anchor="w").pack(fill="x", pady=(15, 5))
 
-# Text Area
 txt = scrolledtext.ScrolledText(main_frame, height=8, font=("Consolas", 9), bg="#f0f0f0")
 txt.insert(tk.END, changelog_text.strip())
-txt.configure(state="disabled") # Read Only
+txt.configure(state="disabled")
 txt.pack(fill="both", expand=True)
 
-# Button Area
 btn_frame = tk.Frame(main_frame, pady=15)
 btn_frame.pack(fill="x")
 
-# Left Button: View Code
-tk.Button(btn_frame, text="View Script Code", command=on_view_code).pack(side="left")
-
-# Right Buttons
+tk.Button(btn_frame, text="View Code", command=on_view_code).pack(side="left")
 tk.Button(btn_frame, text=ui_btn_text, bg=ui_btn_bg, fg="white", font=("Arial", 9, "bold"), padx=10, command=on_action).pack(side="right", padx=(10, 0))
 tk.Button(btn_frame, text="Play without changing", command=on_skip).pack(side="right")
 
-# Handle "X" button as Skip
 root.protocol("WM_DELETE_WINDOW", on_skip)
-
 root.mainloop()
 PYEOF
 
-            # 5. Run Python GUI
+            # Run Python
             python3 "$PYTHON_UI_SCRIPT"
             EXIT_CODE=$?
             rm -f "$PYTHON_UI_SCRIPT"
 
-            # 6. Check Result
+            # Check Exit Code
             if [ $EXIT_CODE -eq 10 ]; then
-                echo "Proceeding with version change..."
                 chmod +x "$TEMP_INSTALLER"
                 bash "$TEMP_INSTALLER"
-                exit 0 # Terminate this script, installer takes over
+                exit 0 # Terminate current script
             fi
-            # If EXIT_CODE is 0, user clicked Play/Skip.
         fi
     fi
     rm -f "$TEMP_INSTALLER"
 }
 
-# RUN UPDATE CHECKER
+# RUN CHECKS
 check_for_updates
 
-# =========================================================================
-#                   WESTON / SOBER LAUNCH LOGIC
-# =========================================================================
+# ==============================================================================
+# 3. WESTON & SOBER LAUNCHER
+# ==============================================================================
 
 # --- CLEANUP ---
 pkill -9 -x "sober" 2>/dev/null
 pkill -9 -x "weston" 2>/dev/null
 flatpak ps | grep "org.vinegarhq.Sober" | awk '{print $1}' | xargs -r kill -9 2>/dev/null
-
-# --- ENVIRONMENT ---
-export SOBER_DISPLAY="wayland-9"
-if [ -z "$XDG_RUNTIME_DIR" ]; then
-    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-fi
-
-CONFIG_DIR="/tmp/weston-sober-config"
-mkdir -p "$CONFIG_DIR"
 rm -f "$XDG_RUNTIME_DIR/$SOBER_DISPLAY"
 rm -f "$XDG_RUNTIME_DIR/$SOBER_DISPLAY.lock"
+rm -rf "$WESTON_CONFIG_DIR"
+mkdir -p "$WESTON_CONFIG_DIR"
 
-# --- WESTON CONFIG ---
-cat > "$CONFIG_DIR/weston.ini" <<INNER_EOF
+# --- WESTON CONFIG GENERATION ---
+cat > "$WESTON_CONFIG_DIR/weston.ini" <<INNER_EOF
 [core]
 backend=x11-backend.so
 shell=kiosk-shell.so
@@ -216,12 +218,12 @@ name=X1
 mode=current
 INNER_EOF
 
-# --- DRIVERS ---
+# --- DRIVER OVERRIDES ---
 export X11_NO_MITSHM=1
 export VIRGL_DEBUG=no_fbo_cache
 export mesa_glthread=true
 
-# --- MOUSE LOOP ---
+# --- MOUSE FIX FUNCTION ---
 start_infinite_mouse() {
     sleep 2
     read SCREEN_WIDTH SCREEN_HEIGHT <<< $(xdotool getdisplaygeometry)
@@ -237,17 +239,20 @@ start_infinite_mouse() {
     done
 }
 
-# --- LAUNCH ---
-weston --config="$CONFIG_DIR/weston.ini" --socket="$SOBER_DISPLAY" --fullscreen > /tmp/weston-sober.log 2>&1 &
+# --- START WESTON ---
+weston --config="$WESTON_CONFIG_DIR/weston.ini" --socket="$SOBER_DISPLAY" --fullscreen > "$WESTON_LOG" 2>&1 &
 WPID=$!
+
 start_infinite_mouse &
 MOUSE_PID=$!
 
+# Wait for Wayland Socket
 for i in {1..50}; do
     if [ -S "$XDG_RUNTIME_DIR/$SOBER_DISPLAY" ]; then break; fi
     sleep 0.1
 done
 
+# --- START SOBER ---
 WAYLAND_DISPLAY="$SOBER_DISPLAY" \
 DISPLAY="" \
 GDK_BACKEND=wayland \
@@ -256,15 +261,16 @@ SDL_VIDEODRIVER=wayland \
 CLUTTER_BACKEND=wayland \
 flatpak run org.vinegarhq.Sober
 
+# --- EXIT HANDLER ---
 kill -TERM $WPID 2>/dev/null
 kill $MOUSE_PID 2>/dev/null
-rm -rf "$CONFIG_DIR"
+rm -rf "$WESTON_CONFIG_DIR"
 EOF
 
-# 5. Permissions
+# 5. PERMISSIONS
 chmod +x ~/.local/bin/launch-sober-weston.sh
 
-# 6. Desktop Entry
+# 6. DESKTOP ENTRY
 cat > ~/.local/share/applications/sober-fix.desktop <<EOF
 [Desktop Entry]
 Name=Roblox (Sober Fix)
@@ -277,10 +283,11 @@ Categories=Game;
 EOF
 chmod +x ~/.local/share/applications/sober-fix.desktop
 
-# 7. Write version
-echo "$CURRENT_VERSION" > ~/.local/share/sober-fix-version
+# 7. VERSION TRACKING
+echo "$INSTALL_VERSION" > ~/.local/share/sober-fix-version
 
 echo "=========================================="
-echo "INSTALLED VERSION: $CURRENT_VERSION"
+echo "INSTALLED VERSION: $INSTALL_VERSION"
 echo "=========================================="
-echo "Downgrade detection logic added."
+echo "Configuration is now centralized at the top of the script."
+echo "Update/Downgrade detection is active."
