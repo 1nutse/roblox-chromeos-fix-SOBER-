@@ -4,7 +4,7 @@
 # CONFIGURATION & CHANGELOG
 # ==============================================================================
 # Esta variable define la versión tanto para la comprobación local como remota.
-CURRENT_VERSION="2.0"
+CURRENT_VERSION="2.5"
 
 # Escribe aquí los cambios. El actualizador extraerá esto para mostrarlo en el popup.
 CHANGELOG_TEXT="
