@@ -5,7 +5,7 @@
 # ==============================================================================
 # Change this version number when you push an update to GitHub.
 # The installer will automatically stamp this version into the local launcher.
-CURRENT_VERSION="4.0"
+CURRENT_VERSION="04666534.0"
 
 # CHANGELOG (Keep the quotes exactly like this)
 CHANGELOG_TEXT="
