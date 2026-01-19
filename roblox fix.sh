@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- CONFIGURACIÓN DE VERSIÓN LOCAL ---
-CURRENT_VERSION="2.3"
+CURRENT_VERSION="1"
 
 # 1. Check dependencies (Weston, Xdotool, Python3-Tk)
 # We need python3-tk for the pretty popup
