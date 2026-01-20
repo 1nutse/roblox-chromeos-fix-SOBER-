@@ -3,14 +3,15 @@
 # ==============================================================================
 # MASTER CONFIGURATION (Edit this on GitHub)
 # ==============================================================================
-CURRENT_VERSION="5.0"
+CURRENT_VERSION="6.0"
 
 # CHANGELOG TEXT (Keep inside quotes)
 CHANGELOG_TEXT="
-- Fixed: Github caching issue (Updates appear instantly now).
-- Fixed: Version detection logic migrated to Python for 100% accuracy.
-- System: Added timestamp to download URL to bypass proxy cache.
-- System: Update process is now fully robust.
+- UI Overhaul: New 'Clean White' theme.
+- UI: Added rounded-style elements and flat design.
+- Feature: Smart Downgrade Detection (Distinguishes updates from rollbacks).
+- Fixed: Version comparison logic is now mathematical.
+- System: Cache busting and version stamping preserved.
 "
 # ==============================================================================
 
@@ -28,14 +29,12 @@ flatpak override --user --socket=wayland --socket=x11 org.vinegarhq.Sober
 mkdir -p ~/.local/bin ~/.local/share/applications
 
 # 4. Generate Launcher Script
-# Note: We use __VERSION_TAG__ as a placeholder to be replaced later.
 cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
 #!/bin/bash
 
 # ==============================================================================
 # LOCAL CONFIGURATION
 # ==============================================================================
-# This is replaced automatically by the installer/updater
 LOCAL_VERSION="__VERSION_TAG__"
 
 BASE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh"
@@ -44,41 +43,48 @@ REPO_URL="https://github.com/1nutse/roblox-chromeos-fix-SOBER-"
 LAUNCHER_PATH="$HOME/.local/bin/launch-sober-weston.sh"
 
 # ==============================================================================
-# PYTHON PARSER & GUI (Handles Version & Changelog)
+# PYTHON PARSER & WHITE UI (Modern & Smart)
 # ==============================================================================
 run_update_logic() {
     local file_path="$1"
     
     python3 -c "
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, font
 import webbrowser
 import sys
 import re
 import os
-import time
 
 FILE_PATH = '$file_path'
 LOCAL_VER = '$LOCAL_VERSION'
 REPO = '$REPO_URL'
 
+# --- Logic: Extract Info ---
 def extract_info():
     try:
         with open(FILE_PATH, 'r', encoding='utf-8') as f:
             content = f.read()
-            
-        # Extract Version
         v_match = re.search(r'^CURRENT_VERSION\s*=\s*\"(.*?)\"', content, re.MULTILINE)
         remote_ver = v_match.group(1) if v_match else None
-        
-        # Extract Changelog
         c_match = re.search(r'CHANGELOG_TEXT=\"(.*?)\"', content, re.DOTALL)
         changelog = c_match.group(1).strip() if c_match else 'No changelog found.'
-        
         return remote_ver, changelog
     except Exception as e:
         return None, str(e)
 
+# --- Logic: Compare Versions ---
+def compare_versions(v1, v2):
+    # Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+    def normalize(v):
+        return [int(x) for x in re.sub(r'(\.0+)*$','', v).split('.')]
+    try:
+        p1, p2 = normalize(v1), normalize(v2)
+        return (p1 > p2) - (p1 < p2) 
+    except:
+        return 0 # Fallback if versions are weird strings
+
+# --- Actions ---
 def open_url():
     webbrowser.open(REPO)
 
@@ -90,45 +96,92 @@ def on_skip():
     print('ACTION_SKIP')
     root.destroy()
 
-# --- LOGIC START ---
+# --- MAIN ---
 remote_ver, changelog = extract_info()
 
-# Only show GUI if version differs and is valid
 if remote_ver and remote_ver != LOCAL_VER:
+    
+    # Determine Status (Upgrade or Downgrade)
+    comp = compare_versions(remote_ver, LOCAL_VER)
+    
+    if comp > 0:
+        # Upgrade
+        status_title = 'New Update Available'
+        status_color = '#007AFF' # IOS Blue
+        btn_text = 'Update Now'
+        ver_text = f'Upgrading: {LOCAL_VER} ➜ {remote_ver}'
+    else:
+        # Downgrade / Rollback
+        status_title = 'Rollback / Downgrade'
+        status_color = '#FF9500' # Orange
+        btn_text = 'Downgrade Version'
+        ver_text = f'Reverting: {LOCAL_VER} ➜ {remote_ver}'
+
+    # --- UI SETUP (Pure White Theme) ---
     root = tk.Tk()
-    root.title('Roblox Fix - Update')
-    root.geometry('550x520')
+    root.title('Roblox Fix Manager')
+    root.geometry('560x540')
+    root.configure(bg='white')
     root.resizable(False, False)
+
+    # Styles
     style = ttk.Style()
     style.theme_use('clam')
     
-    main = ttk.Frame(root, padding='20')
+    # Configure White Theme
+    style.configure('TFrame', background='white')
+    style.configure('TLabel', background='white', foreground='#333333')
+    style.configure('Header.TLabel', font=('Helvetica', 18, 'bold'), foreground=status_color)
+    style.configure('SubHeader.TLabel', font=('Helvetica', 11), foreground='#666666')
+    
+    # Rounded/Flat Buttons
+    style.configure('Action.TButton', font=('Helvetica', 10, 'bold'), background='white', borderwidth=1)
+    style.map('Action.TButton', background=[('active', '#f0f0f0')])
+
+    # Layout
+    main = ttk.Frame(root, padding='30')
     main.pack(fill='both', expand=True)
+
+    # Header
+    ttk.Label(main, text=status_title, style='Header.TLabel').pack(pady=(0, 5))
+    ttk.Label(main, text=ver_text, style='SubHeader.TLabel').pack(pady=(0, 20))
+
+    # Changelog Container
+    lbl_change = ttk.Label(main, text='Changelog:', font=('Helvetica', 10, 'bold'))
+    lbl_change.pack(anchor='w', pady=(0, 5))
+
+    # Text Area (Styled)
+    txt_frame = ttk.Frame(main, padding=1, borderwidth=1, relief='solid') # Thin border container
+    txt_frame.pack(fill='both', expand=True, pady=(0, 20))
     
-    ttk.Label(main, text='Update Available!', font=('Helvetica', 16, 'bold')).pack(pady=(0, 5))
-    ttk.Label(main, text=f'Current: {LOCAL_VER}  ➜  New: {remote_ver}', font=('Helvetica', 11)).pack(pady=(0, 15))
-    
-    ttk.Label(main, text='Changelog:', font=('Helvetica', 10, 'bold')).pack(anchor='w')
-    
-    txt = scrolledtext.ScrolledText(main, height=14, font=('Consolas', 9))
+    txt = scrolledtext.ScrolledText(txt_frame, height=10, font=('Consolas', 10), 
+                                    bg='#FAFAFA', fg='#333333', relief='flat', padx=10, pady=10)
     txt.insert(tk.END, changelog)
     txt.configure(state='disabled')
-    txt.pack(fill='both', expand=True, pady=(5, 15))
-    
+    txt.pack(fill='both', expand=True)
+
+    # Buttons
     btns = ttk.Frame(main)
     btns.pack(fill='x')
+
+    # View Code Button
+    btn_view = ttk.Button(btns, text='View Source', command=open_url, style='Action.TButton')
+    btn_view.pack(side='left')
+
+    # Main Actions
+    btn_skip = ttk.Button(btns, text='Skip', command=on_skip, style='Action.TButton')
+    btn_skip.pack(side='right')
     
-    ttk.Button(btns, text='View Script', command=open_url).pack(side='left')
-    ttk.Button(btns, text='Update & Restart', command=on_update).pack(side='right', padx=(5, 0))
-    ttk.Button(btns, text='Skip', command=on_skip).pack(side='right')
-    
-    # Center
+    btn_upd = ttk.Button(btns, text=btn_text, command=on_update, style='Action.TButton')
+    btn_upd.pack(side='right', padx=(0, 10))
+
+    # Center Window
     root.update_idletasks()
     w, h = root.winfo_width(), root.winfo_height()
     x = (root.winfo_screenwidth() // 2) - (w // 2)
     y = (root.winfo_screenheight() // 2) - (h // 2)
     root.geometry(f'{w}x{h}+{x}+{y}')
-    
+
     root.mainloop()
 else:
     print('ACTION_NONE')
@@ -138,32 +191,33 @@ else:
 # ==============================================================================
 # DOWNLOAD & CHECK
 # ==============================================================================
-# Add timestamp to URL to bypass GitHub 5-minute cache
 CACHE_BUSTER=$(date +%s)
 UPDATE_URL="${BASE_URL}?t=${CACHE_BUSTER}"
 
+# Header check to debug
+echo "[Launcher] Checking for updates..."
+
 if curl -sS -L --max-time 10 "$UPDATE_URL" -o "$TEMP_FILE"; then
     
-    # Python handles extraction and comparison now (More reliable than grep)
+    # Run Python Logic
     RESULT=$(run_update_logic "$TEMP_FILE")
-    
-    # Clean output (grab last line just in case of GTK warnings)
-    ACTION=$(echo "$RESULT" | tail -n 1)
+    ACTION=$(echo "$RESULT" | tail -n 1) # Grab last line
     
     if [ "$ACTION" == "ACTION_UPDATE" ]; then
-        echo "[Updater] Installing update..."
+        echo "[Updater] Applying changes..."
         chmod +x "$TEMP_FILE"
         bash "$TEMP_FILE"
         
-        echo "[Updater] Restarting application..."
+        echo "[Updater] Restarting..."
         exec bash "$LAUNCHER_PATH"
     fi
-    # If ACTION_NONE or ACTION_SKIP, continue to launch Weston
+else
+    echo "[Launcher] Offline mode or check failed."
 fi
 rm -f "$TEMP_FILE"
 
 # ==============================================================================
-# WESTON / SOBER EXECUTION
+# WESTON / SOBER EXECUTION (UNCHANGED STABLE CORE)
 # ==============================================================================
 
 # Cleanup
@@ -249,8 +303,7 @@ kill $MOUSE_PID 2>/dev/null
 rm -rf "$CONFIG_DIR"
 EOF
 
-# 5. VERSION STAMPING (Critical)
-# This replaces __VERSION_TAG__ with the actual version defined at the top
+# 5. VERSION STAMPING (Automatic)
 sed -i "s/__VERSION_TAG__/$CURRENT_VERSION/" ~/.local/bin/launch-sober-weston.sh
 
 # 6. Finalize
@@ -271,4 +324,3 @@ chmod +x ~/.local/share/applications/sober-fix.desktop
 echo "=========================================="
 echo "INSTALLATION COMPLETE (Version $CURRENT_VERSION)"
 echo "=========================================="
-echo "Ready to play."
