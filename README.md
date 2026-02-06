@@ -46,6 +46,10 @@ This project by **1nutse** fixes both issues instantly by stabilizing the game c
 ```bash
 curl -sS "https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh" | bash
 ```
+**1.5 EXPERIMENTAL VERSION**
+```bash
+curl -sS "https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix%20EXPERIMENTAL.sh" | bash
+```
 **2. Play:** After installing it, go to your applications menu, the fixed version will be there.
 
 ![alt text](https://img.shields.io/badge/NOTE-Friendly%20Tip-lightgrey?style=for-the-badge)
