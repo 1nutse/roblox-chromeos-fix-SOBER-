@@ -3,7 +3,7 @@
 # ==============================================================================
 # MASTER CONFIGURATION (Edit this on GitHub)
 # ==============================================================================
-CURRENT_VERSION="1.1"
+CURRENT_VERSION="1.2"
 
 # CHANGELOG TEXT (Keep inside quotes)
 CHANGELOG_TEXT="
