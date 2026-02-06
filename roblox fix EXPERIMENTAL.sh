@@ -5,7 +5,7 @@
 # ==============================================================================
 CURRENT_VERSION="1.1"
 
-# CHANGELOG TEXT (Keep inside quotes)
+# CHANGELOG TEXT
 CHANGELOG_TEXT="
 - WARNING: this is experimental version.
 "
