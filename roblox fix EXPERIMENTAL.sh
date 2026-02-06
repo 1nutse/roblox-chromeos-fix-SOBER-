@@ -7,9 +7,7 @@ CURRENT_VERSION="1.2"
 
 # CHANGELOG TEXT (Keep inside quotes)
 CHANGELOG_TEXT="
-- Feature: Smart Downgrade Detection (Distinguishes updates from rollbacks).
-- Fixed: Version comparison logic is now mathematical.
-- System: Cache busting and version stamping preserved.
+- WARNING: this is experimental version.
 "
 # ==============================================================================
 
