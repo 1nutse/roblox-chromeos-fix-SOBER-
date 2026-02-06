@@ -35,7 +35,7 @@ cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
 # ==============================================================================
 LOCAL_VERSION="__VERSION_TAG__"
 
-BASE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix%20EXPERIMENTAL.sh"
+BASE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh"
 TEMP_FILE="/tmp/sober_update_candidate.sh"
 REPO_URL="https://github.com/1nutse/roblox-chromeos-fix-SOBER-"
 LAUNCHER_PATH="$HOME/.local/bin/launch-sober-weston.sh"
