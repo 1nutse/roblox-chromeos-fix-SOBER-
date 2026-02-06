@@ -3,13 +3,11 @@
 # ==============================================================================
 # MASTER CONFIGURATION (Edit this on GitHub)
 # ==============================================================================
-CURRENT_VERSION="1.1"
+CURRENT_VERSION="1.2"
 
 # CHANGELOG TEXT (Keep inside quotes)
 CHANGELOG_TEXT="
-- Feature: Smart Downgrade Detection (Distinguishes updates from rollbacks).
-- Fixed: Version comparison logic is now mathematical.
-- System: Cache busting and version stamping preserved.
+- Nothing new (Don't worry, this version just shortens the link to the version.)
 "
 # ==============================================================================
 
@@ -35,7 +33,7 @@ cat > ~/.local/bin/launch-sober-weston.sh <<'EOF'
 # ==============================================================================
 LOCAL_VERSION="__VERSION_TAG__"
 
-BASE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/roblox%20fix.sh"
+BASE_URL="https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/main/roblox%20fix.sh"
 TEMP_FILE="/tmp/sober_update_candidate.sh"
 REPO_URL="https://github.com/1nutse/roblox-chromeos-fix-SOBER-"
 LAUNCHER_PATH="$HOME/.local/bin/launch-sober-weston.sh"
