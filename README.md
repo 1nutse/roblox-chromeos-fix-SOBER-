@@ -1,3 +1,7 @@
+# WARNING!
+It is recommended to use the version without automatic updates. It will always be the same version as the one with automatic updates, but it is more secure.
+**The version with automatic updates will be improved in the future to be more secure;** *this may take some time since I am not the best programmer of secure things.*
+
 # ✨ Roblox Sober Fix
 ### The seamless bridge for gaming on ChromeOS & FydeOS
 
