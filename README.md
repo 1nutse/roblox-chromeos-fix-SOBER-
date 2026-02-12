@@ -1,6 +1,9 @@
 # WARNING!
 It is recommended to use the version without automatic updates. It will always be the same version as the one with automatic updates, but it is more secure.
 **The version with automatic updates will be improved in the future to be more secure;** *this may take some time since I am not the best programmer of secure things.*
+*https://raw.githubusercontent.com/1nutse/roblox-chromeos-fix-SOBER-/refs/heads/main/fix-with-no-updates*
+
+Just copy this into your Linux terminal, always check it before doing anything *(you'll probably only need to install it once in your entire life, it's a simple fix.)*
 
 # ✨ Roblox Sober Fix
 ### The seamless bridge for gaming on ChromeOS & FydeOS
